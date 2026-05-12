@@ -1,0 +1,170 @@
+# AetherOps Phase 2: Full-Stack Integration & AI Core
+
+Transition the AetherOps dashboard from local mock data to a live full-stack app backed by Supabase (DB + Realtime) and OpenAI (GPT-based AI analysis). This covers 4 steps: Supabase wiring, ingestion route, VAPT scanner route, and UI execution wiring.
+
+## User Review Required
+
+> [!IMPORTANT]
+> **Environment Variables** — The following must be set in a `.env.local` file at the project root before running:
+> ```env
+> NEXT_PUBLIC_SUPABASE_URL=<your-supabase-project-url>
+> NEXT_PUBLIC_SUPABASE_ANON_KEY=<your-supabase-anon-key>
+> SUPABASE_SERVICE_ROLE_KEY=<your-service-role-key>
+> OPENAI_API_KEY=<your-openai-api-key>
+> ```
+> The `SUPABASE_SERVICE_ROLE_KEY` is needed server-side (API routes) to bypass RLS. The `OPENAI_API_KEY` is never exposed to the client.
+
+> [!WARNING]
+> **Schema Update** — The existing `deals` table needs two new columns (`compliance_status` and `ai_summary`) to support the `/api/ingest` and `/api/scan` routes. A migration SQL file will be provided.
+
+> [!IMPORTANT]
+> **npm install** — The `openai` package will be added as a new dependency.
+
+---
+
+## Proposed Changes
+
+### Infrastructure & Configuration
+
+#### [NEW] [.env.local](file:///c:/Users/Chirag/Documents/AetherOps/.env.local)
+Template for all required environment variables (Supabase URL, Anon Key, Service Role Key, OpenAI API Key).
+
+#### [NEW] [schema-migration.sql](file:///c:/Users/Chirag/Documents/AetherOps/supabase/schema-migration.sql)
+Add two columns to the `deals` table:
+- `compliance_status text default 'Clean'` — tracks whether a deal is `'Clean'` or `'Flagged'`
+- `ai_summary text default ''` — stores the last AI-generated summary
+
+---
+
+### Shared Types & Supabase Client
+
+#### [MODIFY] [supabase.ts](file:///c:/Users/Chirag/Documents/AetherOps/src/lib/supabase.ts)
+- Keep the existing browser client (using `NEXT_PUBLIC_*` env vars).
+- Add a `supabaseAdmin` export that uses the `SUPABASE_SERVICE_ROLE_KEY` for server-side API routes. This is only available server-side and bypasses RLS.
+
+#### [NEW] [types.ts](file:///c:/Users/Chirag/Documents/AetherOps/src/lib/types.ts)
+Centralize all TypeScript interfaces ([Deal](file:///c:/Users/Chirag/Documents/AetherOps/src/lib/data/deals.ts#1-9), [IntelligenceLog](file:///c:/Users/Chirag/Documents/AetherOps/src/lib/data/intelligence-logs.ts#1-8), [ContractVulnerability](file:///c:/Users/Chirag/Documents/AetherOps/src/lib/data/contract-vulnerabilities.ts#1-8), [PendingAction](file:///c:/Users/Chirag/Documents/AetherOps/src/lib/data/pending-actions.ts#1-8), [ColumnId](file:///c:/Users/Chirag/Documents/AetherOps/src/lib/data/deals.ts#10-11), [KanbanColumn](file:///c:/Users/Chirag/Documents/AetherOps/src/lib/data/deals.ts#12-16)) that were previously scattered inside mock data files. The `columns` constant array also moves here. Components and API routes will import from this single file.
+
+#### [DELETE] [deals.ts](file:///c:/Users/Chirag/Documents/AetherOps/src/lib/data/deals.ts)
+Mock `initialDeals` array removed. Interfaces moved to [types.ts](file:///c:/Users/Chirag/Documents/AetherOps/node_modules/@hello-pangea/dnd/src/types.ts).
+
+#### [DELETE] [intelligence-logs.ts](file:///c:/Users/Chirag/Documents/AetherOps/src/lib/data/intelligence-logs.ts)
+Mock `intelligenceLogs` array removed. Interface moved to [types.ts](file:///c:/Users/Chirag/Documents/AetherOps/node_modules/@hello-pangea/dnd/src/types.ts).
+
+#### [DELETE] [contract-vulnerabilities.ts](file:///c:/Users/Chirag/Documents/AetherOps/src/lib/data/contract-vulnerabilities.ts)
+Mock `contractVulnerabilities` array removed. Interface moved to [types.ts](file:///c:/Users/Chirag/Documents/AetherOps/node_modules/@hello-pangea/dnd/src/types.ts).
+
+#### [DELETE] [pending-actions.ts](file:///c:/Users/Chirag/Documents/AetherOps/src/lib/data/pending-actions.ts)
+Mock `pendingActions` array removed. Interface moved to [types.ts](file:///c:/Users/Chirag/Documents/AetherOps/node_modules/@hello-pangea/dnd/src/types.ts).
+
+---
+
+### Step 1: Supabase-Wired Components
+
+Each component will: (a) fetch initial data from Supabase on mount, (b) subscribe to Supabase Realtime for INSERT/UPDATE/DELETE events, (c) manage state via `useState`, (d) show a loading state while data is being fetched.
+
+#### [MODIFY] [OmniFeed.tsx](file:///c:/Users/Chirag/Documents/AetherOps/src/components/omni-feed/OmniFeed.tsx)
+- Remove import of `intelligenceLogs` from mock data.
+- Import `supabase` from `@/lib/supabase` and [IntelligenceLog](file:///c:/Users/Chirag/Documents/AetherOps/src/lib/data/intelligence-logs.ts#1-8) from `@/lib/types`.
+- `useEffect`: fetch `intelligence_logs` ordered by `created_at desc`, then subscribe to Realtime INSERTs on `intelligence_logs` and prepend new entries.
+- Remove the `simulatedEntries` interval—real-time subscription replaces it.
+
+#### [MODIFY] [FeedCard.tsx](file:///c:/Users/Chirag/Documents/AetherOps/src/components/omni-feed/FeedCard.tsx)
+- Update import path for [IntelligenceLog](file:///c:/Users/Chirag/Documents/AetherOps/src/lib/data/intelligence-logs.ts#1-8) from `@/lib/types`.
+
+#### [MODIFY] [KanbanBoard.tsx](file:///c:/Users/Chirag/Documents/AetherOps/src/components/kanban/KanbanBoard.tsx)
+- Remove import of `initialDeals` from mock data.
+- Import `supabase` and types from `@/lib/types`.
+- `useEffect`: fetch `deals` from Supabase on mount. Subscribe to Realtime on `deals` (INSERT, UPDATE, DELETE) to keep local state in sync.
+- `handleDragEnd`: After updating local state, also call `supabase.from('deals').update({ column_name: targetColumn }).eq('id', activeId)` to persist the column change.
+
+#### [MODIFY] [KanbanColumn.tsx](file:///c:/Users/Chirag/Documents/AetherOps/src/components/kanban/KanbanColumn.tsx)
+- Update import path for types from `@/lib/types`.
+
+#### [MODIFY] [DealCard.tsx](file:///c:/Users/Chirag/Documents/AetherOps/src/components/kanban/DealCard.tsx)
+- Update import path for [Deal](file:///c:/Users/Chirag/Documents/AetherOps/src/lib/data/deals.ts#1-9) from `@/lib/types`.
+
+#### [MODIFY] [ComplianceRadar.tsx](file:///c:/Users/Chirag/Documents/AetherOps/src/components/compliance/ComplianceRadar.tsx)
+- Remove import of `contractVulnerabilities` from mock data.
+- Import `supabase` and [ContractVulnerability](file:///c:/Users/Chirag/Documents/AetherOps/src/lib/data/contract-vulnerabilities.ts#1-8) from `@/lib/types`.
+- `useEffect`: fetch `contract_vulnerabilities` from Supabase on mount. Subscribe to Realtime INSERTs.
+- Use state array instead of the static import.
+
+#### [MODIFY] [ExecutionQueue.tsx](file:///c:/Users/Chirag/Documents/AetherOps/src/components/execution/ExecutionQueue.tsx)
+- Remove import of `pendingActions` from mock data.
+- Import `supabase` and [PendingAction](file:///c:/Users/Chirag/Documents/AetherOps/src/lib/data/pending-actions.ts#1-8) from `@/lib/types`.
+- `useEffect`: fetch `pending_actions` from Supabase on mount. Subscribe to Realtime INSERT/UPDATE.
+- Wire the **"Verify & Execute"** button: on click, update all `status = 'drafted'` or `status = 'reviewed'` rows to `status = 'Executed'` via `supabase.from('pending_actions').update(...)`.
+
+---
+
+### Step 2: Ingestion API Route (The Brain)
+
+#### [NEW] [route.ts](file:///c:/Users/Chirag/Documents/AetherOps/src/app/api/ingest/route.ts)
+- **Method**: `POST`
+- **Auth**: Validate a shared secret header (`x-api-key`) or simply verify request body is present (for development).
+- **Input**: JSON body `{ transcript: string, deal_id?: string }`
+- **Logic**:
+  1. Call OpenAI (`gpt-4o` with fallback to `gpt-3.5-turbo`) with a system prompt instructing extraction of: `deal_id`, `extracted_budget`, `new_stage`, `ai_summary`.
+  2. Parse the JSON response from OpenAI.
+  3. If a `deal_id` is provided or extracted, update the `deals` row: set `column_name` to `new_stage`, `value` to `extracted_budget`, `ai_summary` to the summary.
+  4. Insert a new row into `intelligence_logs` with `type: 'call'`, `title`, and `summary`.
+- **Response**: `200 OK` with the extracted data.
+- Uses `supabaseAdmin` (service role key) for DB writes.
+
+---
+
+### Step 3: VAPT Compliance Scanner Route
+
+#### [NEW] [route.ts](file:///c:/Users/Chirag/Documents/AetherOps/src/app/api/scan/route.ts)
+- **Method**: `POST`
+- **Input**: JSON body `{ contract_text: string, contract_name: string, deal_id?: string }`
+- **Logic**:
+  1. Call OpenAI with a system prompt instructing it to scan for business vulnerabilities (missing GDPR clause, unlimited liability, missing termination-for-convenience, ambiguous IP, etc.).
+  2. Expect a JSON array of findings: `{ severity, clause, description }`.
+  3. For each finding with severity `CRITICAL` or `HIGH`, insert into `contract_vulnerabilities`.
+  4. If `deal_id` is provided and any CRITICAL/HIGH findings exist, update `deals.compliance_status` to `'Flagged'` and set `deals.has_compliance_flag = true`.
+- **Response**: `200 OK` with the findings array.
+- Uses `supabaseAdmin` for DB writes.
+
+---
+
+### Step 4: UI Execution Wiring
+
+This is handled within the component modifications above:
+
+- **ExecutionQueue "Verify & Execute" button**: Calls `supabase.from('pending_actions').update({ status: 'Executed' }).in('status', ['drafted', 'reviewed'])`.
+- **KanbanBoard `onDragEnd`**: Already detailed above; persists `column_name` to Supabase after local state update.
+
+---
+
+## Verification Plan
+
+### Automated Tests
+
+1. **Build check** — Run `npm run build` in the project root to verify no TypeScript or import errors after mock data removal:
+   ```sh
+   cd c:\Users\Chirag\Documents\AetherOps && npm run build
+   ```
+
+2. **API route smoke test (Ingest)** — After starting the dev server with `npm run dev`, run:
+   ```sh
+   curl -X POST http://localhost:3000/api/ingest -H "Content-Type: application/json" -d "{\"transcript\": \"The budget for Acme Corp is $3M. We are moving to negotiation stage. Key concern is timeline.\"}"
+   ```
+   Expected: 200 OK with JSON containing `deal_id`, `extracted_budget`, `new_stage`, `ai_summary`.
+
+3. **API route smoke test (Scan)** — After starting the dev server:
+   ```sh
+   curl -X POST http://localhost:3000/api/scan -H "Content-Type: application/json" -d "{\"contract_text\": \"This agreement has no limitation of liability. Data retention period is 10 years. There is no termination for convenience clause.\", \"contract_name\": \"Test Corp MSA v1\"}"
+   ```
+   Expected: 200 OK with JSON array of vulnerability findings.
+
+### Manual Verification
+
+1. **Dashboard loads with Supabase data**: Open `http://localhost:3000` in a browser. Verify all four panels (Omni-Feed, Kanban, Compliance Radar, Execution Queue) load data from Supabase. If tables are empty, seed them via the Supabase dashboard or by running the API routes above first.
+
+2. **Realtime updates**: Open two browser tabs side-by-side. Insert a new row into `intelligence_logs` via the Supabase SQL editor. Verify it appears in the Omni-Feed panel in both tabs without refreshing.
+
+3. **Drag-and-drop persistence**: Drag a deal card from one Kanban column to another. Refresh the page. Verify the card stays in the new column (proving the Supabase update worked).
+
+4. **Verify & Execute button**: Click the "Verify & Execute" button in the Execution Queue. Verify the pending actions' statuses update to "Executed" in the UI and in the Supabase dashboard.
