@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lead Capture | AetherOps Headless CRM</title>
+    <style>
+        :root {
+            --void: #0B0C10;
+            --void-light: #13141A;
+            --accent: #22D3EE;
+            --text-primary: #F1F5F9;
+            --text-secondary: #94A3B8;
+            --glass-bg: rgba(255, 255, 255, 0.03);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --success: #34D399;
+            --error: #EF4444;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', -apple-system, system-ui, sans-serif;
+        }
+
+        body {
+            background-color: var(--void);
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 450px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+
+        h1 {
+            font-size: 24px;
+            margin-bottom: 8px;
+            background: linear-gradient(90deg, #fff, var(--accent));
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        p.subtitle {
+            font-size: 14px;
+            color: var(--text-secondary);
+            margin-bottom: 32px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+        }
+
+        input {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--glass-border);
+            border-radius: 8px;
+            padding: 12px 16px;
+            color: white;
+            font-size: 15px;
+            transition: all 0.2s;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: var(--accent);
+            background: rgba(255, 255, 255, 0.08);
+            box-shadow: 0 0 0 4px rgba(34, 211, 238, 0.1);
+        }
+
+        button {
+            width: 100%;
+            background: var(--accent);
+            color: var(--void);
+            border: none;
+            border-radius: 8px;
+            padding: 14px;
+            font-size: 15px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: transform 0.2s, opacity 0.2s;
+            margin-top: 10px;
+        }
+
+        button:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .success-message, .error-message {
+            display: none;
+            text-align: center;
+            padding: 20px;
+            border-radius: 12px;
+        }
+
+        .success-message {
+            background: rgba(52, 211, 153, 0.1);
+            border: 1px solid var(--success);
+            color: var(--success);
+        }
+
+        .error-message {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid var(--error);
+            color: var(--error);
+            margin-top: 20px;
+            font-size: 13px;
+        }
+
+        .config-warning {
+            background: rgba(251, 191, 36, 0.1);
+            border: 1px solid #FBBF24;
+            color: #FBBF24;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            margin-bottom: 24px;
+            line-height: 1.4;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div id="configNotice" class="config-warning">
+        <strong>Setup Required:</strong> Please open the HTML file and insert your API Key in the script tag to enable lead capture.
+    </div>
+
+    <div id="formSection">
+        <h1>Interest List</h1>
+        <p class="subtitle">Join the AetherOps Early Access program.</p>
+        
+        <form id="leadForm">
+            <div class="form-group">
+                <label for="firstName">First Name</label>
+                <input type="text" id="firstName" name="First_Name" placeholder="Jane" required>
+            </div>
+            <div class="form-group">
+                <label for="lastName">Last Name</label>
+                <input type="text" id="lastName" name="Last_Name" placeholder="Doe" required>
+            </div>
+            <div class="form-group">
+                <label for="email">Email Address</label>
+                <input type="email" id="email" name="Email" placeholder="jane@company.com" required>
+            </div>
+            <div class="form-group">
+                <label for="company">Company</label>
+                <input type="text" id="company" name="Company" placeholder="Acme Corp" required>
+            </div>
+            
+            <button type="submit" id="submitBtn">Submit Interest</button>
+        </form>
+        <div id="errorMessage" class="error-message"></div>
+    </div>
+
+    <div id="successMessage" class="success-message">
+        <h2 style="margin-bottom: 10px;">Transmission Successful!</h2>
+        <p>Thank you! Your interest has been logged in AetherOps. We will be in touch shortly.</p>
+    </div>
+</div>
+
+<script>
+    /**
+     * AETHEROPS CONFIGURATION
+     * Replace the placeholder with your actual AetherOps API Key.
+     */
+    const API_KEY = "aetherops_test_key_xyz123";
+    const API_URL = "http://localhost:3000/api/v1/lead";
+
+    const form = document.getElementById('leadForm');
+    const formSection = document.getElementById('formSection');
+    const successMessage = document.getElementById('successMessage');
+    const errorMessage = document.getElementById('errorMessage');
+    const submitBtn = document.getElementById('submitBtn');
+    const configNotice = document.getElementById('configNotice');
+
+    // Hide config notice if API key is set
+    if (API_KEY !== "<INSERT_YOUR_API_KEY_HERE>") {
+        configNotice.style.display = 'none';
+    }
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        if (API_KEY === "<INSERT_YOUR_API_KEY_HERE>") {
+            alert("Configuration Error: Please insert your API Key in the source code.");
+            return;
+        }
+
+        submitBtn.disabled = true;
+        submitBtn.textContent = "Processing...";
+        errorMessage.style.display = 'none';
+
+        const formData = new FormData(form);
+        const payload = {
+            First_Name: formData.get('First_Name'),
+            Last_Name: formData.get('Last_Name'),
+            Email: formData.get('Email'),
+            Company: formData.get('Company')
+        };
+
+        try {
+            const response = await fetch(API_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${API_KEY}`
+                },
+                body: JSON.stringify(payload)
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                formSection.style.display = 'none';
+                successMessage.style.display = 'block';
+            } else {
+                throw new Error(result.error || "Failed to submit lead");
+            }
+        } catch (err) {
+            errorMessage.textContent = "Error: " + err.message;
+            errorMessage.style.display = 'block';
+            submitBtn.disabled = false;
+            submitBtn.textContent = "Submit Interest";
+        }
+    });
+</script>
+
+</body>
+</html>
